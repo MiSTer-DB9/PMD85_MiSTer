@@ -6,7 +6,10 @@ This repository contains a Verilog implementation for [MiSTer](https://github.co
 
 ## Short demo video of this core
 
-https://youtu.be/VVukIzzWiKY 
+https://www.youtube.com/watch?v=VDQYh1MQ5hU
+
+
+Old video is still available on https://youtu.be/VVukIzzWiKY 
 
 ## Original hardware specifications
 
