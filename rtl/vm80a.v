@@ -8,6 +8,7 @@
 // extra high-speed clock should be provided to operate, F1 and F2
 // phases serve as clock enable gates
 //
+
 module vm80a
 (
    input          pin_clk,       // global module clock (no in original 8080)
@@ -25,6 +26,7 @@ module vm80a
    output         pin_sync,      //
    output         pin_dbin,      //
    output         pin_wr_n
+   ,output  pin_pc_stop
 );
 
 wire pin_aena, pin_dena;
@@ -62,6 +64,7 @@ vm80a_core core
    .pin_sync   (pin_sync),
    .pin_dbin   (pin_dbin),
    .pin_wr_n   (pin_wr_n)
+   ,.pin_pc_stop(pin_pc_stop)
 );
 endmodule
 
@@ -85,6 +88,8 @@ module vm80a_core
    output         pin_sync,      //
    output         pin_dbin,      //
    output         pin_wr_n
+   
+   ,output  pin_pc_stop
 );
 
 //______________________________________________________________________________
@@ -156,6 +161,17 @@ wire           alu_xout, alu_xwr, alu_xrd, alu_ald, alu_awr, alu_ard,
 reg            psw_z, psw_s, psw_p, psw_c, psw_ac, tmp_c;
 reg            t2222, t1375, t1497, t1698, t1668, t1780, t1993, t1994;
 reg            psw_ld, psw_wr, t2046, t2133, t2175;
+
+
+assign pin_pc_stop = pc_FB73 | pc_FBAE | pc_FBBF | pc_FBD8 | pc_FBE8 | pc_8000;
+
+wire pc_FB73 = r16_pc == 16'hFB73; // po Presunutie zakladneho Monitora z ROM do RAM
+wire pc_FBAE = r16_pc == 16'hFBAE; // po Relokacia adries E000-EFFF na 8000-8FFF
+wire pc_FBBF = r16_pc == 16'hFBBF; // po Uprava inicializacnych hodnot systemovych premennych; Zmena ukazatelov BExx na 7Fxx, pripadne BCxx na 7Dxx
+wire pc_FBD8 = r16_pc == 16'hFBD8; // po Uprava niektorych casti kodu. ; Tabulka obsahuje adresu zmeny a 3 byty, ktore sa nahradia
+wire pc_FBE8 = r16_pc == 16'hFBE8; // po Skopirovanie "chybajucej" rutiny pre scroll obrazu
+wire pc_8000 = r16_pc == 16'h8000;
+
 
 //_____________________________________________________________________________
 //

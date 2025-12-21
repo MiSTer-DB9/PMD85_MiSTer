@@ -126,6 +126,8 @@ always @(posedge clk_sys) begin
 					msbw  <= ~msbw;
 					pause <= ~msbw;
 					if(msbw) begin
+                  if ({din, ld_count[7:0]} == 16'h0000) 
+                     ld_count <= 16'hFFFF;
 						stop1  <=0;
 						load  <=load + 1'd1;
 					end

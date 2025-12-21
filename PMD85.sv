@@ -16,7 +16,6 @@
 //
 //============================================================================
 
-
 module emu
 (
 	//Master input clock
@@ -174,17 +173,14 @@ module emu
 	input         OSD_STATUS
 );
 
-
 ///////// Default values for ports not used in this core /////////
 
 //assign ADC_BUS  = 'Z;
 //assign USER_OUT = '1;
-
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
+//assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
-
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
@@ -194,23 +190,13 @@ assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
-assign AUDIO_S = 0;
-assign AUDIO_MIX = 3;
+assign AUDIO_S = 1;
+assign AUDIO_MIX = 0;
 
 wire LED_YELLOW;
 wire LED_RED;
 
-assign LED_POWER = {1'b1, led_blink[23] | allRam_n};
-
-wire [23:0] led_blink;
-always @(posedge CLK_50M)
-begin
-   led_blink <= led_blink + 1;
-end
-
-
-
-
+assign LED_POWER = 2'b00;	
 assign LED_USER = LED_RED;
 assign LED_DISK = { 1'b1, LED_YELLOW };	
 assign BUTTONS = 0;
@@ -226,19 +212,20 @@ assign VIDEO_ARY = 8'd3;
 localparam CONF_STR = {
 	"PMD85;;",
 	"-;",	
-	"F1,rmm,Load to ROM Pack",
+	"F1,rmmmrm,Load to ROM Pack;",
+	"R7,Eject ROM Pack;",
 	"-;",
+   "O8,PMD85 version,2A,3;",
 	"O12,Video,Green,TV,RGB,ColorACE;",
-	"D0O3,Sound,Beeper,Beeper + MIF85 on K2;",
+	"D6O9,Sound,Beeper,Beeper + MIF85 (K2);",
 	"O45,Joystick,None,K3,K4;",
-	"D1O6,Mouse,None,K2;",		
+	"D9O6,Mouse,None,K2;",		
 	"-;",	
 	"R0,Reset PMD;",
-	"J,Fire 1,Fire 2;",
+	"J,Fire;",
 	"V,v",`BUILD_DATE 
 };
 
-wire forced_scandoubler;
 wire  [1:0] buttons;
 wire [31:0] status;
 wire [10:0] ps2_key;
@@ -249,114 +236,188 @@ wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_data;
 wire        ioctl_download;
 wire  [7:0] ioctl_index;
+wire        ioctl_wait;
 
-wire [15:0] joy0;
-wire [15:0] joy1;
+wire [15:0] joy;
 
-hps_io #(.CONF_STR(CONF_STR)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
-
-	.forced_scandoubler(forced_scandoubler),
+   .EXT_BUS(),
+	.gamma_bus(),
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({status[3], status[6]}),
+	.status_menumask(status),
 	
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
-	
-	.joystick_0(joy0),
-	.joystick_1(joy1),
+	.joystick_0(joy),
 	
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_data),
 	.ioctl_download(ioctl_download),
-	.ioctl_index(ioctl_index)  
+	.ioctl_index(ioctl_index),
+	.ioctl_wait(ioctl_wait)
 );
-
 
 
 ///////////////////////   CLOCKS   ///////////////////////////////
 
-wire locked;
-wire clk_sys; // PMD85 system clock (for 8224) is 18.432MHz
-wire clk_8M; // 8MHz clock for audio (SAA1099)
+wire pll_locked;
+wire clk_sys;   // PMD85 system clock (for 8224) is 18.432MHz
+wire clk_SDRAM; // 16MHz -2.7ns phase shift SDRAM
 
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.locked(locked),
-	.outclk_1(clk_8M)
+	.locked(pll_locked),
+	.outclk_1(clk_SDRAM)
 );
 
 wire reset = RESET | status[0] | buttons[1];
 
+////////////////////////   SDRAM   ///////////////////////////////
+
+wire  [7:0] sdram_in;
+wire  [7:0] sdram_out;
+wire [24:0] sdram_a;
+wire        sdram_we;
+wire        sdram_rd;
+wire        sdram_ready;
+
+sdram ram
+(
+	 .*,	 
+	 .init(~pll_locked),
+	 .clk(clk_SDRAM),
+	 .dout(sdram_out),
+	 .din (sdram_in),
+	 .addr(sdram_a),
+	 .we(sdram_we),
+	 .rd(sdram_rd),
+	 .ready(sdram_ready)
+);
+
+
+//-------------------------------------------------------------------------------
+//  Cassette audio in 
+//
+  
+wire lineIn;
+ltc2308_tape ltc2308_tape
+(
+	.clk(CLK_50M),
+	.ADC_BUS(ADC_BUS),
+	.dout(lineIn)
+);  
+
+
+
 //////////////////////////////////////////////////////////////////
 
-wire clk_video;
-wire SR_n;
-wire SD_n;
-wire ZAT_n;
-wire pixel;
+wire       clk_video;
+wire       SR_n;
+wire       SD_n;
+wire       ZAT_n;
+wire       pixel;
+wire       beeper;
+wire [7:0] MIF85_left;
+wire [7:0] MIF85_right;
+wire [2:0] musica_out;
 wire [1:0] pixelFunction;
-wire allRam_n;
-wire RxD;
-wire TxD;
-assign USER_OUT[1:0] = {TxD, 1'b1};
-assign RxD = USER_IN[0];
-	
-	
-PMD85_2A PMD85core
+wire [4:0] joystick  = { (joy[7:4] == 4'b0000), ~joy[1], ~joy[0], ~joy[3], ~joy[2] };
+
+wire   RxD;
+wire   TxD;
+assign USER_OUT = {4'b1111, TxD, 1'b1};
+assign RxD      = USER_IN[0];
+
+
+PMD85_core PMD85_core
 (
-	.clk_50M(CLK_50M),
-	.clk_8M(clk_8M),
+   .clk_50M(clk_sys),
+   
 	.clk_sys(clk_sys),
 	.reset_main(reset),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
+	.joystick(joystick),
+	
 	.clk_video(clk_video),
 	.SR_n(SR_n),
 	.SD_n(SD_n),
-	.ZAT_n(ZAT_n), 
+//	.ZAT_n(ZAT_n), 
+	.ZAT_n_XXX(ZAT_n), 
+	
 	.pixel(pixel),
-	
-	.ADC_BUS(ADC_BUS),
-	.RxD(RxD),
-	.TxD(TxD),   
-	.audioMode(status[3]),
-	.AUDIO_L(AUDIO_L),
-	.AUDIO_R(AUDIO_R),
-	
-	.ColorMode(status[2:1]),
 	.VGA_R(VGA_R),
 	.VGA_G(VGA_G),
 	.VGA_B(VGA_B),	
-		
-	.LED_YELLOW(LED_YELLOW),
-	.LED_RED(LED_RED),
-   .allRam_n(allRam_n),
-	 	
-	.joystickPort(status[5:4]),
-	.joy0(joy0),
-	.joy1(joy1),
-	.mouseEnabled(status[6]),
 	
+	.lineIn(lineIn),
+	.RxD(RxD),
+	.TxD(TxD),
+
+   .PMD_version(status[8]),
+	.mouseEnabled(status[6]),
+	.joystickPort(status[5:4]),
+	.audioMode(status[9]),
+	
+	
+	.ColorMode(status[2:1]),
+   .RomPackType(1), // always SDRAM
+	.ROMPackEject(status[7]),
+	.beeper(beeper),
+	.MIF85_left_out(MIF85_left),
+	.MIF85_right_out(MIF85_right),
+	.led_yellow(LED_YELLOW),
+	.led_red(LED_RED),
+	
+   .sdram_in(sdram_in),
+   .sdram_out(sdram_out),
+   .sdram_a(sdram_a),
+   .sdram_we(sdram_we),
+	.sdram_rd(sdram_rd),
+	.sdram_ready(sdram_ready),
+	
+
 	.ioctl_wr(ioctl_wr),	
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_data),
 	.ioctl_download(ioctl_download),
-	.ioctl_index(ioctl_index)
+	.ioctl_index(ioctl_index),
+	.ioctl_wait(ioctl_wait)
 );
 
-assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = clk_video;
-//assign CE_PIXEL = 1;
 
+wire   audioMode = status[9];
+assign AUDIO_L   = (beeper ? 16'h0FFF : 16'h00) | ((audioMode) ? { 2'h0, MIF85_left,  6'h0 } : 16'h00);
+assign AUDIO_R   = (beeper ? 16'h0FFF : 16'h00) | ((audioMode) ? { 2'h0, MIF85_right, 6'h0 } : 16'h00);
+
+
+
+reg clk_video_last;
+reg clk_video_fixed;
+reg ZAT_n_fixed;
+
+always @(posedge clk_sys)
+begin
+	clk_video_last <= clk_video;
+	ZAT_n_fixed    <= ZAT_n;
+	
+	if (~clk_video_last & clk_video)
+		clk_video_fixed <= 1'b1;
+	else
+		clk_video_fixed <= 1'b0;
+end
+	
+assign CLK_VIDEO = clk_sys;
+assign CE_PIXEL  = clk_video & ~clk_video_last;
 assign VGA_HS = SR_n;
 assign VGA_VS = SD_n;
 assign VGA_DE = ZAT_n;
