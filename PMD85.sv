@@ -313,7 +313,7 @@ wire        ioctl_wait;
 
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: USB-side joystick renamed + joydb mux
 wire [15:0] joy_USB;
-wire [15:0] joy = joydb_1ena ? (OSD_STATUS ? 16'b0 : joydb_1) : joy_USB;
+wire [15:0] joy = joydb_1ena ? (OSD_STATUS ? 16'b0 : joydb_1_mapped[15:0]) : joy_USB;
 // [MiSTer-DB9 END]
 
 hps_io #(.CONF_STR(CONF_STR), .STRLEN($size(CONF_STR)>>3)) hps_io
